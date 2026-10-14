@@ -1,0 +1,380 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>桃太郎 どんぶらこ</title>
+<link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Shippori+Mincho:wght@500;700&display=swap" rel="stylesheet">
+<style>
+ html,body{height:100%}
+ body{margin:0;background:#efe4c8;color:#2a2320;overflow:hidden;font-family:"Yuji Syuku","Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif}
+ canvas{display:block;position:fixed;inset:0}
+ .fuda{background:rgba(245,236,214,.9);box-shadow:0 0 0 2px #2a2320,0 0 0 5px rgba(245,236,214,.9),0 4px 16px rgba(0,0,0,.25);color:#2a2320}
+ #kotoba{position:fixed;top:4vh;right:5vw;writing-mode:vertical-rl;font-size:4vh;line-height:1.9;letter-spacing:.18em;padding:3vh 1.5vh;
+   white-space:pre;max-height:80vh;transition:opacity 1s}
+ #kotoba .k{margin-left:1.2em}
+ #daimei{position:fixed;top:4vh;left:4vw;writing-mode:vertical-rl;font-size:9vh;letter-spacing:.25em;line-height:1.1;padding:2vh 1vh}
+ #kizu{position:fixed;top:4vh;left:calc(4vw + 13vh);writing-mode:vertical-rl;font-size:3.2vh;letter-spacing:.2em;padding:1.5vh .8vh;display:none}
+ #hanko{position:fixed;left:4vw;bottom:4vh;width:6vh;height:6vh;background:#b8332a;color:#f5e9d0;font-size:3.6vh;
+   display:flex;align-items:center;justify-content:center;border-radius:4px;box-shadow:inset 0 0 0 2px #f5e9d0,inset 0 0 0 4px #b8332a;opacity:.9}
+ #anai{position:fixed;bottom:5vh;width:100%;text-align:center;font-size:3.4vh;letter-spacing:.2em;text-shadow:0 0 8px #efe4c8,0 0 3px #efe4c8;transition:opacity .8s;pointer-events:none}
+ #st{position:fixed;bottom:1.5vh;right:2vw;font-size:1.7vh;font-family:sans-serif;opacity:.6}
+ .ok{color:#2f7a3a}.ng{color:#b8332a}
+ #help{position:fixed;bottom:1.5vh;left:12vh;font-size:1.6vh;opacity:.7;font-family:sans-serif;line-height:1.5;display:none}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="daimei" class="fuda">桃太郎</div>
+<div id="kizu" class="fuda"></div>
+<div id="kotoba" class="fuda"></div>
+<div id="hanko">桃</div>
+<div id="anai">スティックを 左右に たおすと はじまります(← → でも可)<br><small>流れに さからうと すすみにくく、のると ながされすぎます</small></div>
+<div id="st"></div>
+<div id="onpu" class="fuda" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:4vh;letter-spacing:.15em;padding:2vh 4vh;display:none;z-index:9;text-align:center;line-height:1.7"></div>
+<div id="help">スティック左右 / ← → 桃を左右に　Shift+数字 舵に使う軸を変更　C スティックの今の位置を中央にする　(待機中のみ: 1 左右 2 前後 3 横振り 0 川 Space 中央)　+/- 振れ幅　M 音の入/切　R 再接続　H この説明</div>
+<script>
+const OWNER=(typeof __OWNER__==='undefined')?1:__OWNER__;
+const STANDALONE=location.protocol==='file:';   // ファイルとして開いた時(橋渡し役なし)
+const c=document.getElementById('c'),x=c.getContext('2d');
+const $=id=>document.getElementById(id);
+let W,Hh,paper;
+function rs(){W=c.width=innerWidth;Hh=c.height=innerHeight;paper=makePaper()}
+function makePaper(){const p=document.createElement('canvas');p.width=512;p.height=512;const q=p.getContext('2d');
+ const im=q.createImageData(512,512);for(let i=0;i<im.data.length;i+=4){const n=225+Math.random()*30;im.data[i]=n;im.data[i+1]=n-10;im.data[i+2]=n-38;im.data[i+3]=255}
+ q.putImageData(im,0,0);return x.createPattern(p,'repeat');}
+addEventListener('resize',rs);rs();
+
+// ================= 語り(昔話ふう) =================
+const KATARI={
+ idle:[["むかし むかし\nあるところに","おおきな 桃が\nどんぶらこ どんぶらこと\n流れてきました"]],
+ start:[["桃は 川の流れに\nみを まかせ","岩や 魚を\nよけながら\nくだっていきます"]],
+ hayase:[["川は はげしく\nうずをまき","桃は ぐるり ぐるりと\nもまれました"]],
+ fish:[["おおきな 鯉が\nよこぎります"]],
+ baba:[["川しもで\nおばあさんが\nせんたくを しています","岸に よって\nゆっくり\n白い ぬのへ"]],
+ clear:[["おばあさんは\nおおきな 桃を\nひろいあげました"],["いえに もちかえり\n桃を わってみると"],["なかから げんきな\n男の子が うまれました"],["桃太郎と\nなづけられました\n\nめでたし めでたし"]],
+ fail_rock:[["桃は 岩にあたって\nわれてしまいました"],["……\n\nもういちど"]],
+ fail_miss:[["桃は おばあさんの\nまえを とおりすぎ"],["うみへ 流れて\nいきました\n\nもういちど"]],
+ fail_fast:[["桃は はやすぎて\nおばあさんの 手は\nとどきませんでした"],["うみへ 流れて\nいきました\n\nもういちど"]],
+ fail_out:[["桃は 岸に\nのりあげて\nとまってしまいました"],["……\n\nもういちど"]],
+ sakarau:[["流れに さからうと\n桃は なかなか\nすすみません"]],
+ noru:[["流れに のると\n桃は どんどん\nながされます"]],
+ shudou:[["……"]],
+};
+let kScene='',kPage=0,kTimer=0;
+function showKotoba(lines,instant){const el=$('kotoba');const html=lines.map(l=>`<span class=k>${l}</span>`).join('');
+ if(instant){el.innerHTML=html;el.style.opacity=1;return}
+ el.style.opacity=0;setTimeout(()=>{el.innerHTML=html;el.style.opacity=1},1000);}
+function katari(scene,instant){if(scene===kScene)return;kScene=scene;kPage=0;kTimer=0;showKotoba(KATARI[scene][0],instant)}
+function katariTick(dt){const pages=KATARI[kScene];if(!pages||pages.length<2)return;kTimer+=dt;
+ if(kTimer>5.5){kTimer=0;kPage=(kPage+1)%pages.length;showKotoba(pages[kPage])}}
+
+
+// ================= 音(琴・せせらぎ)  ブラウザ内で合成、音源ファイルなし =================
+let AC=null,master=null,river=null,SND={on:true},kotoT=2.5;
+try{if(typeof localStorage!=='undefined'&&localStorage.getItem('h3_sound')==='off')SND.on=false}catch(e){}
+const HIRA=[293.66,311.13,392,440,466.16,587.33,622.25,783.99,880];   // 平調子(D): 琴の音階
+function ensureAudio(){ // キー操作など「人の操作」の中で呼ぶと鳴りはじめる
+ if(!AC){const Ctor=(typeof window!=='undefined')&&(window.AudioContext||window.webkitAudioContext);if(!Ctor)return false;
+  try{AC=new Ctor()}catch(e){return false}
+  const comp=AC.createDynamicsCompressor();comp.threshold.value=-18;comp.ratio.value=4;comp.connect(AC.destination);
+  master=AC.createGain();master.gain.value=SND.on?1:0;master.connect(comp);buildRiver();}
+ if(AC.state!=='running')AC.resume();return AC.state==='running'}
+function buildRiver(){ // せせらぎ: ピンクノイズを川幅ふうにゆらす
+ const sr=AC.sampleRate,len=sr*4,buf=AC.createBuffer(2,len,sr);
+ for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);let b0=0,b1=0,b2=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;
+  b0=0.99765*b0+w*0.0990460;b1=0.96300*b1+w*0.2965164;b2=0.57000*b2+w*1.0526913;d[i]=(b0+b1+b2+w*0.1848)*0.11}}
+ const src=AC.createBufferSource();src.buffer=buf;src.loop=true;
+ const hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=160;
+ const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=800;lp.Q.value=0.8;
+ const g=AC.createGain();g.gain.value=0;
+ const lfo=AC.createOscillator();lfo.frequency.value=0.21;const lg=AC.createGain();lg.gain.value=260;lfo.connect(lg);lg.connect(lp.frequency);lfo.start();
+ const lfo2=AC.createOscillator();lfo2.frequency.value=0.34;const lg2=AC.createGain();lg2.gain.value=0.05;lfo2.connect(lg2);lg2.connect(g.gain);lfo2.start();
+ src.connect(hp);hp.connect(lp);lp.connect(g);g.connect(master);src.start();river={g,lp}}
+function riverTick(k){ // 速さと早瀬で せせらぎの大きさ・明るさを変える
+ if(!river)return;const sp=mode==='play'?G.speed:4.5;
+ let vol=mode==='clear'?0.12:0.28+(k-1)*0.5+Math.max(0,sp-4.5)*0.05;
+ const fq=650+(k-1)*1800+Math.max(0,sp-4.5)*60;
+ const t0=AC.currentTime;river.g.gain.setTargetAtTime(Math.min(0.8,vol),t0,0.4);river.lp.frequency.setTargetAtTime(fq,t0,0.5)}
+function pluck(freq,when,vol,dur){ // 琴: はじいて減衰、最初だけ少し押し手
+ if(!AC||!SND.on)return;when=when||0;vol=vol==null?0.45:vol;dur=dur||1.8;const t0=AC.currentTime+when;
+ const o=AC.createOscillator();o.type='triangle';o.frequency.setValueAtTime(freq*1.012,t0);o.frequency.exponentialRampToValueAtTime(freq,t0+0.09);
+ const o2=AC.createOscillator();o2.type='sine';o2.frequency.value=freq*2.005;const g2=AC.createGain();g2.gain.value=0.22;
+ const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(freq*7,t0);f.frequency.exponentialRampToValueAtTime(freq*1.4,t0+dur);
+ const g=AC.createGain();g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(vol,t0+0.006);g.gain.exponentialRampToValueAtTime(0.0008,t0+dur);
+ o.connect(f);o2.connect(g2);g2.connect(f);f.connect(g);g.connect(master);o.start(t0);o2.start(t0);o.stop(t0+dur+0.05);o2.stop(t0+dur+0.05)}
+function thud(strength){ // 岩にあたる: 低い太鼓ふうの音 + しぶき
+ if(!AC||!SND.on)return;const t0=AC.currentTime,v=Math.min(1,strength||1);
+ const o=AC.createOscillator();o.type='sine';o.frequency.setValueAtTime(140,t0);o.frequency.exponentialRampToValueAtTime(45,t0+0.28);
+ const g=AC.createGain();g.gain.setValueAtTime(0.9*v,t0);g.gain.exponentialRampToValueAtTime(0.001,t0+0.4);o.connect(g);g.connect(master);o.start(t0);o.stop(t0+0.45);
+ const sr=AC.sampleRate,n=Math.floor(sr*0.35),b=AC.createBuffer(1,n,sr),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
+ const src=AC.createBufferSource();src.buffer=b;const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=2600;bp.Q.value=0.6;
+ const ng=AC.createGain();ng.gain.value=0.35*v;src.connect(bp);bp.connect(ng);ng.connect(master);src.start(t0)}
+function sndStart(){ensureAudio();HIRA.forEach((f,i)=>pluck(f,i*0.055,0.35,1.4))}                       // かき鳴らし(上へ)
+function sndFish(){pluck(783.99,0,0.3,0.9);pluck(880,0.09,0.3,1.2)}
+function sndClear(){[[587.33,0],[466.16,0.4],[440,0.8],[392,1.2],[440,1.8],[587.33,2.3],[783.99,2.8]].forEach(q=>pluck(q[0],q[1],0.45,2.4))}
+function sndFail(){[[392,0],[311.13,0.45],[293.66,0.9],[146.83,1.5]].forEach(q=>pluck(q[0],q[1],0.4,2.6))}
+function kotoTick(dt,k){ // ときどき琴を一つ二つ 爪弾く(早瀬のあいだは休む)
+ if(!AC||!SND.on)return;kotoT-=dt;if(kotoT>0)return;
+ if(k>1.15||mode==='fail'){kotoT=1.5;return}
+ const base=Math.floor(Math.random()*HIRA.length);pluck(HIRA[base],0,0.3+Math.random()*0.15,2.2);
+ if(Math.random()<0.45)pluck(HIRA[(base+2)%HIRA.length],0.28,0.25,2.0);
+ kotoT=(mode==='idle'?3.5:2.8)+Math.random()*3.5}
+function toggleSound(){SND.on=!SND.on;try{localStorage.setItem('h3_sound',SND.on?'on':'off')}catch(e){}
+ if(!ensureAudio())return;master.gain.setTargetAtTime(SND.on?1:0,AC.currentTime,0.05);if(SND.on)pluck(587.33,0,0.3,1.2)}
+
+// ================= 状態 =================
+let mode='idle';           // idle | play | clear | fail
+let testMode=9;            // 待機中の揺れ: 9=川 0=手動 1/2/3=テスト
+let t={pitch:0,roll:0,yaw:0},cur={pitch:0,roll:0,yaw:0},gain=0.35,keys={},st={};
+let flowT=0,scroll=0,last=performance.now();
+const G={};                // ゲーム中の値
+const COURSE_LEN=420;      // 川の長さ(単位)
+const PZ=17.7;             // 桃の画面上の奥行き(yz(PZ)が画面の0.86の高さになる)
+function newGame(){
+ G.dist=0;G.u=0;G.vu=0;G.speed=4.5;G.kizu=0;G.hit=0;G.hitYaw=0;G.muteki=0;G.side=Math.random()<0.5?-1:1;G.result='';G.endT=0;G.steer=0;
+ G.rocks=[];G.fish=[];
+ // 岩: 手前は少なく、だんだん密に。時々「片側だけ空く」列
+ for(let d=50;d<COURSE_LEN-50;d+=18+Math.random()*14){
+  const r=Math.random();
+  if(r<0.5)G.rocks.push({d,u:(Math.random()*2-1)*0.75,s:0.8+Math.random()*0.6});
+  else if(r<0.8){const gap=(Math.random()*2-1)*0.6;for(let u=-0.85;u<=0.86;u+=0.42)if(Math.abs(u-gap)>0.38)G.rocks.push({d,u,s:0.7+Math.random()*0.3});}
+  else{G.rocks.push({d,u:-0.9,s:0.9});G.rocks.push({d,u:0.9,s:0.9});}   // 両岸の岩: 真ん中を通るしかない=速くなる
+ }
+ for(let d=80;d<COURSE_LEN-70;d+=36+Math.random()*30)G.fish.push({d,u:Math.random()<0.5?-1.4:1.4,dir:0,sp:0.9+Math.random()*0.5,ph:Math.random()*7});
+ for(const f of G.fish)f.dir=f.u<0?1:-1;
+ mode='play';katari('start');$('kizu').style.display='block';$('anai').style.opacity=0;sndStart();
+}
+// 川の流れ: 距離ごとに横に押す力と速さ(読めるように、絵の波も同じ式でずらす)
+function flowX(d){return Math.sin(d*0.045)*0.55+Math.sin(d*0.017+1.3)*0.35}
+function flowK(d){if(d<40||d>COURSE_LEN-80)return 1;const s=Math.sin(d*0.03+0.7);return s>0.55?1+(s-0.55)*1.4:1}   // 早瀬(最大1.6倍)
+function laneK(u){return 1.35-0.7*Math.min(1,Math.abs(u))}   // 真ん中が速く 岸ぎわが ゆるい
+const SLOW_OK=4.2;   // これより ゆっくりなら おばあさんが 拾える
+
+// ================= 入力 =================
+addEventListener('keydown',e=>{keys[e.key]=1;if(!e.repeat)ensureAudio();
+ if(e.key==='m'||e.key==='M'){toggleSound();return}
+ const lr=['ArrowLeft','ArrowRight','a','d','A','D'].includes(e.key);
+ if(mode==='idle'&&lr){newGame();return}
+ if((mode==='clear'||mode==='fail')&&G.endT>4&&lr){mode='idle';toIdle();return}
+ if(mode==='idle'){
+  if(testMode===9&&['ArrowUp','ArrowDown'].includes(e.key))testMode=0;
+  if(e.key==='0'||e.key==='9')testMode=9;if(e.key==='1')testMode=1;if(e.key==='2')testMode=2;if(e.key==='3')testMode=3;
+  if(e.key===' '){testMode=0;t={pitch:0,roll:0,yaw:0}}}
+ if(e.shiftKey&&/^[0-9]$/.test(e.code.replace('Digit','')))pad.axis=+e.code.replace('Digit','');
+ if(e.key==='+'||e.key==='=')gain=Math.min(1,gain+0.05);if(e.key==='-')gain=Math.max(0,gain-0.05);
+ if((e.key==='r'||e.key==='R')&&!STANDALONE)fetch('/reconnect').then(r=>r.json()).then(s=>st=s).catch(()=>{});
+ if((e.key==='c'||e.key==='C')&&pad.ready){padCenters[pad.name+'#'+pad.axis]=pad.axes[pad.axis]||0;try{localStorage.setItem('h3_pad_center',JSON.stringify(padCenters))}catch(x){}}
+ if(e.key==='h'||e.key==='H'){const h=$('help');h.style.display=h.style.display==='block'?'none':'block'}});
+addEventListener('keyup',e=>keys[e.key]=0);
+addEventListener('pointerdown',()=>ensureAudio());
+// スティック: ブラウザは「ボタンを一度押す」まで機器を出さない(倒すだけでは気づかない)。
+// 複数つながっている時(スティック+ペダル)は、動かした方の機器を舵に使う。
+let pad={name:'',axes:[],axis:0,idx:-1,seen:0,ready:false,center:0};
+let padCenters={};try{padCenters=JSON.parse(localStorage.getItem('h3_pad_center')||'{}')}catch(e){}   // axis: 舵に使う軸の番号(既定 0 = スティックの左右)
+const padBase={};   // 機器ごとの最初に見た時の軸の値(静止位置)。ここから動いたら「使っている機器」と判断
+function padAxis(){let gp=[];try{gp=navigator.getGamepads?navigator.getGamepads():[]}catch(e){}let seen=0;
+ for(let i=0;i<gp.length;i++){const g=gp[i];if(!g)continue;seen++;
+  const key=i+':'+g.id;const base=padBase[key]||(padBase[key]=Array.from(g.axes));
+  let act=false;for(let j=0;j<g.axes.length;j++)if(Math.abs((g.axes[j]||0)-(base[j]||0))>0.3)act=true;
+  for(const b of g.buttons||[])if(b&&b.pressed)act=true;
+  if(act&&pad.idx!==i){pad.idx=i;pad.name=g.id||'';pad.ready=true}}
+ pad.seen=seen;
+ const g=pad.idx>=0?gp[pad.idx]:null;if(!g){if(seen===0){pad.idx=-1;pad.ready=false}return 0}
+ pad.name=g.id||'';pad.axes=Array.from(g.axes);pad.center=padCenters[(g.id||'')+'#'+pad.axis]||0;
+ let a=(g.axes[pad.axis]||0)-pad.center;a=a/(1-Math.min(0.8,Math.abs(pad.center)));if(Math.abs(a)>0.12)return Math.max(-1,Math.min(1,a*1.15));
+ if(g.buttons[14]&&g.buttons[14].pressed)return -1;if(g.buttons[15]&&g.buttons[15].pressed)return 1;return 0}
+addEventListener('gamepadconnected',e=>{if(pad.idx<0){pad.name=e.gamepad.id;pad.seen=Math.max(1,pad.seen)}});
+addEventListener('gamepaddisconnected',e=>{if(e.gamepad.index===pad.idx){pad.idx=-1;pad.name='';pad.ready=false}delete padBase[e.gamepad.index+':'+e.gamepad.id]});
+function toIdle(){$('kizu').style.display='none';$('anai').style.opacity=1;katari('idle');testMode=9}
+if(!STANDALONE)setInterval(()=>fetch('/state').then(r=>r.json()).then(s=>st=s).catch(()=>{}),1000);
+katari('idle',true);
+if(location.hash==='#play'){newGame()}else if(location.hash==='#goal'){newGame();G.dist=COURSE_LEN-45;G.u=G.side*0.5}
+else if(location.hash==='#clear'){newGame();G.dist=COURSE_LEN-1;G.u=G.side*0.8;G.vu=0}
+else if(location.hash==='#fail'){newGame();G.dist=COURSE_LEN-1;G.u=0}
+
+// ================= 揺れの計算 =================
+function idleSway(dt){flowT+=dt;const s=flowT;
+ t.pitch=Math.sin(s*0.8)*0.35+Math.sin(s*2.3)*0.12;t.roll=Math.sin(s*0.55+1)*0.45+Math.sin(s*1.9+0.5)*0.15;t.yaw=Math.sin(s*0.3+2)*0.35;return 1}
+function playStep(dt){
+ const k=flowK(G.dist);
+ let inp=0;if(keys.ArrowLeft||keys.a||keys.A)inp-=1;if(keys.ArrowRight||keys.d||keys.D)inp+=1;const pa=padAxis();if(pa)inp=pa;
+ G.steer+=(inp-G.steer)*Math.min(1,dt*6);            // 舵の反応(大きいほど機敏)
+ const fx=flowX(G.dist);
+ const same=G.steer*fx;                              // >0: 流れと同じ向き, <0: 逆らっている
+ let eff=0.85;if(same<0)eff=0.85*Math.max(0.5,1-Math.abs(fx)*0.8);else if(same>0)eff=0.85+Math.abs(fx)*0.4;
+ G.vu+=(G.steer*eff+fx*0.12-G.u*0.1)*dt;   // 舵 + 川の押し + 本流へ戻る力(弱)
+ const withFlow=G.vu*fx>0;
+ G.vu*=Math.pow(withFlow?0.22:0.1,dt);                // 流れに乗っていると少し止まりにくい
+ if(Math.abs(G.u)>0.9&&G.vu*G.u>0)G.vu*=Math.pow(0.05,dt);   // 岸ぎわは浅くて進みにくい(外に出にくい)
+ G.u+=G.vu*dt;
+ G.sakarau=same<-0.15&&Math.abs(fx)>0.35;G.noru=withFlow&&Math.abs(G.vu)>0.5&&Math.abs(fx)>0.35;
+ if(Math.abs(G.u)>1.08){G.result='fail_out';endGame();return k}   // 川の外へ
+ G.speed=4.5*k*laneK(G.u);G.dist+=G.speed*dt;scroll+=dt*(0.6+0.25*G.speed/5+0.6*(k-1));
+ // 魚: 上流へ泳ぎつつ横切る
+ for(const f of G.fish){const z=f.d-G.dist;if(z<-5||z>95)continue;f.u+=f.dir*f.sp*dt;f.d-=3*dt;}
+ // 当たり判定
+ G.muteki=Math.max(0,G.muteki-dt);   // ぶつかった直後は しばらく 続けて傷つかない
+ for(const r of G.rocks){const z=r.d-G.dist;if(!r.hit&&Math.abs(z-PZ)<1.6&&Math.abs(r.u-G.u)<0.17+r.s*0.08){r.hit=1;const dir=G.u<r.u?-1:1;G.vu+=dir*0.6;bump(dir);thud(G.muteki<=0?1:0.5);if(G.muteki<=0){G.kizu++;G.muteki=1.0}}}
+ for(const f of G.fish){const z=f.d-G.dist;if(!f.hit&&Math.abs(z-PZ)<1.8&&Math.abs(f.u-G.u)<0.3){f.hit=1;G.vu+=f.dir*1.6;bump(f.dir*0.8);sndFish();}}
+ G.hit*=Math.pow(0.05,dt);G.hitYaw*=Math.pow(0.08,dt);
+ // 語り
+ const zb=COURSE_LEN-G.dist;
+ if(G.kizu>=5){G.result='fail_rock';endGame();}
+ else if(G.dist>=COURSE_LEN){G.result=(G.u*G.side<0.45)?'fail_miss':(G.speed>SLOW_OK?'fail_fast':'clear');endGame();}
+ else if(zb<90)katari('baba');else if(k>1.2)katari('hayase');else if(G.sakarau)katari('sakarau');else if(G.noru)katari('noru');
+ else if(G.fish.some(f=>{const z=f.d-G.dist;return z>PZ&&z<60&&Math.abs(f.u)<1}))katari('fish');else katari('start');
+ const haya=G.speed<SLOW_OK?'ゆるり':(G.speed<5.8?'ふつう':'はやい');
+ $('kizu').textContent='きず '+'●'.repeat(G.kizu)+'○'.repeat(Math.max(0,5-G.kizu))+'　はやさ '+haya;
+ // 席の揺れ: 左右の流されぐあい=ロール、速さの変化=ピッチ、ぶつかり=ヨー
+ const s=flowT+=dt;
+ const furue=G.sakarau?Math.sin(s*14)*0.08:0;
+ t.roll=Math.max(-1,Math.min(1,G.vu*0.5+Math.sin(s*1.9)*0.12*k+G.hit+furue));
+ t.pitch=Math.max(-1,Math.min(1,-(G.speed-4.5)*0.12+Math.sin(s*2.3)*0.12*k+Math.abs(G.hit)*0.5));
+ t.yaw=Math.max(-1,Math.min(1,G.steer*0.35+G.hitYaw+Math.sin(s*0.7)*0.15));
+ return k;
+}
+function bump(dir){G.hit+=dir*0.9;G.hitYaw+=dir*0.7}
+function endGame(){if(mode!=='play')return;mode=G.result==='clear'?'clear':'fail';katari(G.result);G.endT=0;if(mode==='clear')sndClear();else sndFail();$('anai').textContent='← → で もういちど';}
+function endStep(dt){G.endT+=dt;if(G.endT>4)$('anai').style.opacity=1;G.hit*=Math.pow(0.05,dt);G.hitYaw*=Math.pow(0.08,dt);
+ const s=flowT+=dt;
+ if(mode==='clear'){t.roll=Math.sin(s*0.6)*0.12;t.pitch=Math.sin(s*0.5)*0.1;t.yaw=0;}   // 拾われて おだやか
+ else{t.roll=Math.sin(s*0.55+1)*0.45+G.hit;t.pitch=Math.sin(s*0.8)*0.3;t.yaw=Math.sin(s*0.3)*0.3+G.hitYaw;}
+ if(G.endT>30){mode='idle';toIdle()}
+ return 1}
+
+// ================= 絵(浮世絵ふう) =================
+const INK='#2a2320',AI='#24466e',AI2='#1a3454',SHIRO='#f3ead6',MIDORI='#6f8f3f',MIDORI2='#4f6d2e',KIN='#d9b95c',SUMI='#4a4340',HAI='#8b8680';
+const kasumi=[];for(let i=0;i<3;i++)kasumi.push({y:0.1+i*0.09,x:Math.random(),w:0.25+Math.random()*0.35,v:0.004+Math.random()*0.006});
+function inkPath(fill){x.fillStyle=fill;x.fill();x.strokeStyle=INK;x.lineWidth=Math.max(2,Hh*0.004);x.lineJoin='round';x.stroke();}
+function mountain(cx,cy,w,h,fill){x.beginPath();x.moveTo(cx-w,cy);
+ x.quadraticCurveTo(cx-w*0.45,cy-h*0.25,cx-w*0.12,cy-h*0.9);x.quadraticCurveTo(cx,cy-h*1.05,cx+w*0.12,cy-h*0.9);
+ x.quadraticCurveTo(cx+w*0.45,cy-h*0.25,cx+w,cy);x.closePath();inkPath(fill);}
+function pine(px,py,sz){x.fillStyle=INK;x.beginPath();x.rect(px-sz*0.05,py-sz*0.5,sz*0.1,sz*0.5);x.fill();
+ for(let i=0;i<3;i++){const yy=py-sz*(0.45+i*0.22),ww=sz*(0.5-i*0.12);x.beginPath();x.ellipse(px+(i%2?sz*0.1:-sz*0.08),yy,ww,sz*0.09,0,0,7);x.fill();}}
+function seigaiha(cx,cy,r){x.strokeStyle=SHIRO;x.lineWidth=Math.max(1.2,r*0.09);for(let i=0;i<3;i++){x.beginPath();x.arc(cx,cy,r*(1-i*0.3),Math.PI,0);x.stroke();}}
+function rock(px,py,sz){ // 岩: 墨の面に白いしぶき
+ x.beginPath();x.moveTo(px-sz,py);x.lineTo(px-sz*0.7,py-sz*0.7);x.lineTo(px-sz*0.2,py-sz*1.0);x.lineTo(px+sz*0.4,py-sz*0.8);x.lineTo(px+sz*0.9,py-sz*0.3);x.lineTo(px+sz,py);x.closePath();inkPath(SUMI);
+ x.beginPath();x.moveTo(px-sz*0.6,py-sz*0.62);x.lineTo(px-sz*0.2,py-sz*0.85);x.lineTo(px+sz*0.3,py-sz*0.7);x.strokeStyle=HAI;x.lineWidth=Math.max(1,sz*0.12);x.stroke();
+ x.strokeStyle=SHIRO;x.lineWidth=Math.max(1,sz*0.1);x.lineCap='round';
+ x.beginPath();x.moveTo(px-sz*1.3,py+sz*0.1);x.quadraticCurveTo(px-sz*1.1,py-sz*0.3,px-sz*0.8,py+sz*0.05);x.stroke();
+ x.beginPath();x.moveTo(px+sz*0.8,py+sz*0.05);x.quadraticCurveTo(px+sz*1.1,py-sz*0.3,px+sz*1.3,py+sz*0.1);x.stroke();}
+function koi(px,py,sz,dir,ph){ // 鯉: 朱と白、墨の輪郭
+ x.save();x.translate(px,py);x.scale(dir,1);const w=Math.sin(ph)*0.25;
+ x.beginPath();x.moveTo(-sz,0);x.quadraticCurveTo(-sz*0.5,-sz*0.45,sz*0.3,-sz*0.35);x.quadraticCurveTo(sz*0.8,-sz*0.15,sz,0);
+ x.quadraticCurveTo(sz*0.8,sz*0.15,sz*0.3,sz*0.35);x.quadraticCurveTo(-sz*0.5,sz*0.45,-sz,0);x.closePath();inkPath('#f1e6d0');
+ x.beginPath();x.ellipse(sz*0.25,-sz*0.05,sz*0.35,sz*0.22,0.2,0,7);x.fillStyle='#c8412f';x.fill();
+ x.beginPath();x.ellipse(-sz*0.45,sz*0.1,sz*0.22,sz*0.15,-0.3,0,7);x.fill();
+ x.beginPath();x.moveTo(-sz,0);x.lineTo(-sz*1.5,-sz*0.4+w*sz);x.lineTo(-sz*1.35,0);x.lineTo(-sz*1.5,sz*0.4+w*sz);x.closePath();inkPath('#c8412f');
+ x.beginPath();x.arc(sz*0.72,-sz*0.08,sz*0.06,0,7);x.fillStyle=INK;x.fill();
+ x.restore();}
+function baba(px,py,sz,dir){ // おばあさん: 川べりでかがんで洗濯
+ x.save();x.translate(px,py);x.scale(dir,1);
+ x.beginPath();x.ellipse(sz*0.9,sz*0.05,sz*0.55,sz*0.3,0,0,7);inkPath('#a67c52');                  // 桶
+ x.beginPath();x.moveTo(-sz*0.6,sz*0.1);x.quadraticCurveTo(-sz*0.3,-sz*1.1,sz*0.4,-sz*0.9);x.lineTo(sz*0.5,sz*0.1);x.closePath();inkPath('#3d5a80'); // 着物(かがんだ体)
+ x.beginPath();x.moveTo(-sz*0.5,-sz*0.3);x.lineTo(sz*0.05,-sz*0.45);x.lineTo(sz*0.1,sz*0.05);x.lineTo(-sz*0.45,sz*0.1);x.closePath();inkPath('#b8332a'); // 帯・前掛け
+ x.beginPath();x.arc(sz*0.55,-sz*1.0,sz*0.3,0,7);inkPath('#f2d9b5');                              // 顔
+ x.beginPath();x.moveTo(sz*0.25,-sz*1.05);x.quadraticCurveTo(sz*0.55,-sz*1.55,sz*0.9,-sz*1.05);x.closePath();inkPath('#f3ead6'); // 手ぬぐい
+ x.beginPath();x.arc(sz*0.62,-sz*1.02,sz*0.03,0,7);x.fillStyle=INK;x.fill();
+ x.beginPath();x.moveTo(sz*0.4,-sz*0.5);x.lineTo(sz*0.95,-sz*0.15);x.strokeStyle='#f2d9b5';x.lineWidth=sz*0.14;x.lineCap='round';x.stroke(); // 腕
+ x.restore();}
+function drawPeach(px,py,R,rot,now){x.save();x.translate(px,py);x.rotate(rot);
+ x.beginPath();x.ellipse(0,0,R,R*0.92,0,0,7);x.fillStyle='#f2a4b4';x.fill();
+ x.beginPath();x.ellipse(-R*0.25,-R*0.2,R*0.55,R*0.5,-0.4,0,7);x.fillStyle='#f7c6cf';x.fill();
+ x.beginPath();x.ellipse(0,0,R,R*0.92,0,0,7);x.strokeStyle=INK;x.lineWidth=Hh*0.006;x.stroke();
+ x.beginPath();x.moveTo(R*0.05,-R*0.9);x.quadraticCurveTo(-R*0.25,-R*0.2,R*0.05,R*0.7);x.strokeStyle='#b8567a';x.lineWidth=Hh*0.005;x.stroke();
+ x.beginPath();x.ellipse(R*0.35,-R*0.85,R*0.32,R*0.13,-0.6,0,7);x.fillStyle='#5f8a3a';x.fill();x.strokeStyle=INK;x.lineWidth=Hh*0.004;x.stroke();
+ if(mode==='play'||mode==='fail')for(let i=0;i<Math.min(5,G.kizu);i++){x.beginPath();x.ellipse(R*(-0.5+i*0.25),R*(0.3-(i%3)*0.3),R*0.13,R*0.09,i,0,7);x.fillStyle='#8a4a5a';x.fill();}
+ x.strokeStyle=SHIRO;x.lineWidth=Hh*0.005;x.lineCap='round';
+ for(let i=-2;i<=2;i++){x.beginPath();x.moveTo(i*R*0.45-R*0.2,R*0.75+Math.sin(now/300+i)*R*0.06);x.quadraticCurveTo(i*R*0.45,R*0.6,i*R*0.45+R*0.2,R*0.75);x.stroke();}
+ x.restore();}
+
+function step(now){
+ const dt=Math.min(0.05,(now-last)/1000);last=now;
+ let k=1;
+ {const pa=padAxis();
+  if(mode==='idle'&&Math.abs(pa)>0.6)newGame();
+  else if((mode==='clear'||mode==='fail')&&G.endT>4&&Math.abs(pa)>0.6){mode='idle';toIdle()}}
+ if(mode==='play')k=playStep(dt);
+ else if(mode==='clear'||mode==='fail')k=endStep(dt);
+ else{ if(testMode===9){k=idleSway(dt);scroll+=dt*0.9}
+  else if(testMode===0){const sp=1.8*dt;if(keys.ArrowUp)t.pitch=Math.max(-1,t.pitch-sp);if(keys.ArrowDown)t.pitch=Math.min(1,t.pitch+sp);}
+  else{const v=Math.sin(now/500)*0.7;t={pitch:0,roll:0,yaw:0};if(testMode===1)t.roll=v;if(testMode===2)t.pitch=v;if(testMode===3)t.yaw=v;}
+  katari(testMode===9?'idle':'shudou');}
+ katariTick(dt);riverTick(k);kotoTick(dt,k);
+ for(const q in cur)cur[q]+=(t[q]-cur[q])*0.12;
+ const inPlay=mode!=='idle';
+ const dist=inPlay?G.dist:scroll*6;
+ // ---- 和紙 ----
+ x.fillStyle='#efe4c8';x.fillRect(0,0,W,Hh);x.globalAlpha=0.55;x.fillStyle=paper;x.fillRect(0,0,W,Hh);x.globalAlpha=1;
+ x.save();x.translate(W/2,Hh*0.46+cur.pitch*Hh*0.08);x.rotate(cur.roll*0.22);
+ mountain(-W*0.42,0,W*0.28,Hh*0.16,'#b9c6d3');mountain(W*0.05,0,W*0.34,Hh*0.24,'#9fb1c4');mountain(W*0.42,0,W*0.3,Hh*0.17,'#b9c6d3');
+ mountain(-W*0.2,Hh*0.01,W*0.26,Hh*0.13,'#7f97ad');mountain(W*0.28,Hh*0.01,W*0.22,Hh*0.1,'#7f97ad');
+ mountain(-W*0.5,Hh*0.02,W*0.35,Hh*0.1,MIDORI);mountain(W*0.55,Hh*0.02,W*0.4,Hh*0.11,MIDORI);
+ x.beginPath();x.rect(-W*2,0,W*4,Hh*2);x.fillStyle=MIDORI2;x.fill();
+ x.beginPath();x.rect(-W*2,0,W*4,Hh*0.004);x.fillStyle=INK;x.fill();
+ for(const q of [[-0.44,0.06,0.09],[-0.36,0.1,0.13],[0.4,0.07,0.1],[0.47,0.12,0.14],[-0.47,0.2,0.2],[0.44,0.24,0.22]])pine(q[0]*W,q[1]*Hh,q[2]*Hh);
+ // ---- 川 ----
+ const bottom=Hh*1.25;
+ const yz=z=>bottom/(z*0.12+1),wz=z=>W*2.4/(z*0.28+1),pz=z=>1/(z*0.12+1);
+ const ux=(u,z)=>u*wz(z)/2*0.85;   // 川幅上の位置(-1..1)→横座標
+ const kawa=new Path2D();kawa.moveTo(-wz(400)/2,yz(400));kawa.lineTo(wz(400)/2,yz(400));
+ for(let z=399;z>=95;z-=15){kawa.lineTo(wz(z)/2,yz(z))}
+ for(let z=94;z>=0;z--){kawa.lineTo(wz(z)/2+Math.sin(z*0.25)*W*0.025/(z*0.12+1),yz(z))}
+ for(let z=0;z<=95;z++){kawa.lineTo(-wz(z)/2+Math.sin(z*0.2+1)*W*0.025/(z*0.12+1),yz(z))}
+ for(let z=110;z<=400;z+=15){kawa.lineTo(-wz(z)/2,yz(z))}
+ kawa.closePath();x.fillStyle=AI;x.fill(kawa);x.strokeStyle=INK;x.lineWidth=Hh*0.005;x.stroke(kawa);
+ x.save();x.clip(kawa);
+ // 流れの筋(横に押す向きへ斜めに走る濃い帯)
+ x.globalAlpha=0.35;for(let i=0;i<12;i++){const z=((i*8-scroll*6)%96+96)%96;const z1=Math.max(0,z-2);const fx=flowX(dist+z*1.0);
+  x.beginPath();x.moveTo(-wz(z)/2+fx*wz(z)*0.15,yz(z));x.lineTo(wz(z)/2+fx*wz(z)*0.15,yz(z));x.lineTo(wz(z1)/2-fx*wz(z1)*0.15,yz(z1));x.lineTo(-wz(z1)/2-fx*wz(z1)*0.15,yz(z1));x.fillStyle=AI2;x.fill();}
+ x.globalAlpha=0.28;x.fillStyle=SHIRO;   // 岸ぎわの浅瀬(ゆるい流れ)
+ x.beginPath();for(let z=95;z>=0;z--)x.lineTo(-wz(z)/2,yz(z));for(let z=0;z<=95;z++)x.lineTo(-wz(z)/2*0.72,yz(z));x.closePath();x.fill();
+ x.beginPath();for(let z=95;z>=0;z--)x.lineTo(wz(z)/2,yz(z));for(let z=0;z<=95;z++)x.lineTo(wz(z)/2*0.72,yz(z));x.closePath();x.fill();
+ x.globalAlpha=0.75;const rows=26;
+ for(let i=0;i<rows;i++){const z=(((i*3.6-scroll*5)%(rows*3.6))+rows*3.6)%(rows*3.6);const p=pz(z);const y=bottom*p;const r=Hh*0.16*p;
+  const n=Math.ceil(wz(z)/(r*1.6))+2;const off=(i%2)*r*0.8+flowX(dist+z)*r*1.2;
+  for(let j=-n/2;j<=n/2;j++){seigaiha(j*r*1.6+off,y,r)}}
+ x.globalAlpha=1;
+ if(k>1.15){x.strokeStyle=SHIRO;x.lineWidth=Hh*0.006;x.lineCap='round';
+  for(let i=0;i<14;i++){const z=((i*5.1-scroll*9)%70+70)%70;const p=pz(z);const y=bottom*p;const u=Math.sin(i*5.1)*wz(z)*0.4;const s=Hh*0.09*p*(k-1)*2;
+   x.beginPath();x.moveTo(u-s,y);x.quadraticCurveTo(u-s*0.3,y-s*1.4,u+s*0.3,y-s*0.9);x.quadraticCurveTo(u+s*0.1,y-s*0.5,u+s*0.5,y-s*0.6);x.stroke();
+   x.beginPath();x.moveTo(u+s*0.2,y-s*0.2);x.quadraticCurveTo(u+s*0.7,y-s*0.9,u+s*1.1,y-s*0.5);x.stroke();}}
+ // ---- 洗濯物(ゴール)と おばあさん、岩、魚(奥から手前の順) ----
+ const things=[];
+ if(inPlay){
+  const zb=COURSE_LEN-G.dist+PZ;
+  if(zb<95&&zb>-6)things.push({z:zb,kind:'nuno'});
+  for(const r of G.rocks){const z=r.d-G.dist;if(z>-2&&z<95&&!r.hit)things.push({z,kind:'rock',o:r})}
+  for(const f of G.fish){const z=f.d-G.dist;if(z>-2&&z<95&&Math.abs(f.u)<1.5)things.push({z,kind:'koi',o:f})}
+ }
+ things.sort((a,b)=>b.z-a.z);
+ for(const th of things){const p=pz(th.z),y=bottom*p;
+  if(th.kind==='nuno'){x.beginPath();x.ellipse(ux(G.side*0.75,th.z),y,wz(th.z)*0.12,Hh*0.06*p,0,0,7);x.fillStyle=SHIRO;x.fill();x.strokeStyle=INK;x.lineWidth=Math.max(1,Hh*0.003);x.stroke();}
+  else if(th.kind==='rock')rock(ux(th.o.u,th.z),y,Hh*0.075*p*th.o.s*3);
+  else koi(ux(th.o.u,th.z),y,Hh*0.07*p*3,th.o.dir,now/120+th.o.ph);}
+ const kasumiG=x.createLinearGradient(0,yz(95),0,yz(400));kasumiG.addColorStop(0,'rgba(239,228,200,0)');kasumiG.addColorStop(1,'rgba(239,228,200,0.95)');
+ x.fillStyle=kasumiG;x.fillRect(-W,yz(400)-2,W*2,yz(95)-yz(400)+2);
+ x.restore();
+ if(inPlay&&mode!=='clear'){const zb=COURSE_LEN-G.dist+PZ;if(zb<95&&zb>-6){const p=pz(zb);baba(ux(G.side*1.3,zb),yz(zb)-Hh*0.01*p,Hh*0.14*p*3,-G.side);}}
+ // ---- 桃(川の上、奥行きPZ) ----
+ {const uP=inPlay?G.u:0;const yP=yz(PZ)+Math.sin(now/400)*Hh*0.008;const xP=ux(uP,PZ);
+  if(mode==='clear'){const l=Math.min(1,G.endT/2.5);drawPeach(xP+(ux(G.side*1.25,PZ)-xP)*l,yP-Hh*0.22*l,Hh*0.17*(1-0.35*l),0,now);}
+  else drawPeach(xP,yP,Hh*0.17,(inPlay?G.steer*0.15:0)-cur.roll*0.1,now);
+  if(mode==='clear'){const zb=COURSE_LEN-G.dist+PZ;const p=pz(zb);baba(ux(G.side*1.3,zb),yz(zb)-Hh*0.01*p,Hh*0.14*p*3,-G.side);}}
+ x.restore();
+ // ---- 霞 ----
+ for(const m of kasumi){m.x=(m.x+m.v*dt)%1.3;const y=m.y*Hh,w=m.w*W,h=Hh*0.035,xx=(m.x-0.15)*W;
+  x.beginPath();x.roundRect(xx,y,w,h,h/2);x.fillStyle=KIN;x.globalAlpha=0.55;x.fill();x.globalAlpha=1;x.strokeStyle=INK;x.lineWidth=1.5;x.stroke();}
+ // ---- 道のり(巻物) ----
+ if(inPlay){const bx=W*0.33,by=Hh*0.035,bw=W*0.34,bh=Hh*0.02;
+  x.beginPath();x.roundRect(bx,by,bw,bh,bh/2);x.fillStyle=SHIRO;x.fill();x.strokeStyle=INK;x.lineWidth=2;x.stroke();
+  const pr=Math.min(1,G.dist/COURSE_LEN);x.beginPath();x.roundRect(bx,by,bw*pr,bh,bh/2);x.fillStyle=AI;x.fill();
+  x.beginPath();x.arc(bx+bw*pr,by+bh/2,bh*0.9,0,7);x.fillStyle='#f2a4b4';x.fill();x.strokeStyle=INK;x.stroke();
+  x.beginPath();x.arc(bx+bw,by+bh/2,bh*0.9,0,7);x.fillStyle='#3d5a80';x.fill();x.stroke();}
+ const v=x.createRadialGradient(W/2,Hh/2,Hh*0.5,W/2,Hh/2,Hh*1.1);v.addColorStop(0,'rgba(60,40,20,0)');v.addColorStop(1,'rgba(60,40,20,.35)');
+ x.fillStyle=v;x.fillRect(0,0,W,Hh);
+ const padTxt=pad.ready?`　<span class=ok>● スティック</span> ${pad.name.slice(0,18)} 軸${pad.axis}=${(pad.axes[pad.axis]||0).toFixed(2)}${pad.center?`(中央${pad.center.toFixed(2)})`:''}`
+  :(pad.seen?`　<span class=ok>●</span> 機器${pad.seen}台 見えています: 使う方を倒すかボタンを押すと確定`:'　<span class=ng>● スティック未検出</span>: 画面を一度クリックして、スティックのボタンをどれか1回押してください(倒すだけでは気づきません)');
+ {const o=$('onpu');if(!SND.on){o.style.display='block';o.textContent='音は 消えています　Mキーで 入ります'}
+  else if(!AC||AC.state!=='running'){o.style.display='block';o.textContent='音を出すには 画面を いちど クリック'}
+  else o.style.display='none'}
+ $('st').innerHTML=(STANDALONE?`画面だけの版(H3 なし)`:st.connected?`<span class=ok>● H3 接続中</span>`:`<span class=ng>● H3 未接続</span>`)+padTxt+`　振れ幅 ${gain.toFixed(2)}　音 ${SND.on?((AC&&AC.state==='running')?'<span class=ok>●</span>':'キーを押すと鳴ります'):'消音'}(M)　H:操作説明`;
+ requestAnimationFrame(step);
+}
+requestAnimationFrame(step);
+if(!STANDALONE)setInterval(()=>fetch('/',{method:'POST',body:JSON.stringify({owner:OWNER,pitch:cur.pitch,roll:cur.roll,yaw:cur.yaw,gain})}).catch(()=>{}),1000/30);
+</script></body></html>
