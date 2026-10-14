@@ -1,5 +1,8 @@
 # 桃太郎 beginning
 
+![タイトル画面](docs/title.png)
+![遊んでいるところ](docs/play.png)
+
 桃になって川を流れるゲーム。
 椅子が動く装置「DOF Reality H3」に乗って遊ぶ。
 2026年9月のハッカソンで作成。
